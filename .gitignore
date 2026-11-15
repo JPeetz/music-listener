@@ -1,0 +1,16 @@
+# Isolated worker venv (built by install.sh) - never commit
+.venv/
+.venv-*/
+# Local model caches (downloaded on first run)
+.hf-cache/
+.install-metadata.json
+.install-metadata.json.lock
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+# Transcription output (regenerated per run) - commit an example if desired
+transcriptions/
+logs/

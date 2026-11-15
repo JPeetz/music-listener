@@ -1,0 +1,50 @@
+name: music-listener
+label: Music Listener
+kind: standalone
+version: 0.1.0
+manifest_version: 2
+api_version: 1
+description: >-
+  Listen to MP3/WAV audio by reconstructing every instrumental track, vocal
+  melody, pitch bend, and timed lyric into multi-track MIDI, MusicXML, and a
+  compact structural JSON score. Runs a heavy audio/ML stack (Demucs 6-stem
+  separation, Basic Pitch polyphonic transcription, torchcrepe f0, faster-whisper
+  lyrics) inside its own isolated .venv so Hermes' core Python stays untouched.
+author: Joerg Peetz
+license: MIT
+homepage: https://github.com/JPeetz/agentforge
+tags: [music, audio, transcription, midi, musicxml, demucs, whisper]
+platforms: [macos, linux]
+requires_hermes: ">=0.21.5"
+provides_tools:
+  - listen_to_music
+config_schema:
+  device:
+    type: str
+    default: "auto"
+    label: "Compute device"
+    description: "auto, cuda, mps, or cpu. On this Intel Mac 'auto' resolves to cpu."
+  demucs_model:
+    type: str
+    default: "htdemucs_6s"
+    label: "Demucs model"
+    description: "Separation model: htdemucs_6s (6 stems) or htdemucs (4 stems)."
+  quantize_grid:
+    type: str
+    default: "16th"
+    label: "Quantize grid"
+    description: "16th, 32nd, or none (unaligned)."
+  whisper_model:
+    type: str
+    default: "base"
+    label: "Whisper model"
+    description: "faster-whisper model size: tiny, base, small, medium."
+  output_dir:
+    type: str
+    default: "transcriptions"
+    label: "Output directory"
+    description: "Root dir for transcribed scores (relative to the agent cwd)."
+optional_env:
+  - name: HF_TOKEN
+    description: "HuggingFace token if a gated whisper/demucs model is used. Most models are public."
+    secret: true
