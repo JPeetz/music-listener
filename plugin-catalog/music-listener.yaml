@@ -1,6 +1,6 @@
 name: music-listener
 repo: https://github.com/JPeetz/music-listener
-sha: 5c2b97f759733047c7108955f4035b1367b23a7f
+sha: efadddca3bd6044e27fe8f2c2c1a7544d8b00626
 title: Music Listener
 description: >-
   Listen to an MP3/FLAC/WAV by reconstructing every instrumental track, the
