@@ -40,6 +40,30 @@ To understand the song, read: tempo → key → per-track note counts (which par
 are present?) → sections (what changes every 8 bars) → the lyric words and their
 time alignment → the lead vocal note range.
 
+## 1b. Reading the lead vocal correctly
+
+Do NOT judge a transcription by note length, repetition or small intervals - short and
+repetitive notes are the NORMAL signature of a hook, and both failure modes below are
+silent (the output looks like plausible data either way).
+
+**Non-lexical vocals are melody, not noise.** `na-na-na`, `da-da-da`, `hey-hey-hey`,
+`di-da-di-da` and syllable-per-note chant are genuine melodic material. Their signature
+is short notes in repeated A-B-A-B alternation. Filtering short or repetitious notes
+deletes the hook - the most memorable material in the track.
+
+**Diagnose a bad transcription by measurement, not impression.** On the Lead Vocal track
+count: distinct note durations, onsets carrying more than one note, overlapping pairs.
+A healthy monophonic lead has many distinct durations, zero multi-note onsets, zero
+overlaps. Exactly ONE distinct duration means every real note length was discarded.
+Multi-note onsets a semitone apart are NOT tracker jitter by default - check the
+quantiser and the note-boundary code before blaming the pitch tracker.
+
+**Verify register with pyin/MIDI pitches, never an FFT peak-pick.** An FFT argmax
+returns the loudest HARMONIC, so a male voice at ~110 Hz with a strong 3rd harmonic
+reads ~330 Hz and is mislabelled female. Read `Lead Vocal` pitches from `full_score.mid`.
+The Demucs vocal stem holds ALL voices, so where a choir answers the reading is the
+choir, not the soloist.
+
 ## 2. Query specific bars / motifs with Python
 
 Use the plugin's venv python (it has pretty_midi + music21) to query without
