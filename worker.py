@@ -328,7 +328,7 @@ def melody_notes_from_f0(f0: list[float], sr: int) -> list[dict]:
     for i, hz in enumerate(f0):
         if hz <= 0:
             if midi_prev is not None:
-                notes.append(_note_bend(start_idx, midi_prev, bend_start))
+                notes.append(_note_bend(start_idx, midi_prev, bend_start, i))
                 midi_prev = None
             start_idx = i + 1
             continue
@@ -336,12 +336,12 @@ def melody_notes_from_f0(f0: list[float], sr: int) -> list[dict]:
         if midi_prev is None:
             midi_prev, start_idx = m, i
         elif m != midi_prev:
-            notes.append(_note_bend(start_idx, midi_prev, bend_start))
+            notes.append(_note_bend(start_idx, midi_prev, bend_start, i))
             midi_prev, start_idx, bend_start = m, i, 0.0
         else:
             bend_start = max(bend_start, 0.0)
     if midi_prev is not None:
-        notes.append(_note_bend(start_idx, midi_prev, bend_start))
+        notes.append(_note_bend(start_idx, midi_prev, bend_start, len(f0)))
     # collapse >=8 consecutive equal-pitch partials into one note (plateau)
     collapsed: list[dict] = []
     for n in notes:
@@ -353,11 +353,18 @@ def melody_notes_from_f0(f0: list[float], sr: int) -> list[dict]:
     return collapsed
 
 
-def _note_bend(start_idx: int, midi: int, bend_start: float) -> dict:
+def _note_bend(start_idx: int, midi: int, bend_start: float,
+               end_idx: int | None = None) -> dict:
     # pitch-bend magnitude from drift between voiced frames (simplified: 0)
+    # Duration comes from the actual plateau length (end_idx - start_idx frames at a
+    # 10 ms hop). It used to be hardcoded to 0.060, which discarded every note's real
+    # length and made fast syllabic runs (na-na-na / di-da-di-da) unreadable.
+    if end_idx is None:
+        dur = 0.060
+    else:
+        dur = max((end_idx - start_idx) * 0.010, 0.010)
     return {"start": round(start_idx * 0.010, 3), "pitch": midi,
-            "duration": round(0.060, 3) if bend_start == 0 else round(0.060 + bend_start * 0.0, 3),
-            "pitch_bend_semitones": 0}
+            "duration": round(dur, 3), "pitch_bend_semitones": 0}
 
 
 def whisper_lyrics(audio_path: str, model_size: str) -> dict:
@@ -414,13 +421,35 @@ def stage5_export(track_data: dict, out_root: Path, grid: str,
     # build a named multi-track MIDI
     pm = pretty_midi.PrettyMIDI(initial_tempo=analysis["tempo_bpm"] if analysis["tempo_bpm"] else 120.0)
 
-    def add_track(name: str, notes, channel: int | None = None):
+    def add_track(name: str, notes, channel: int | None = None,
+                  monophonic: bool = False):
         track = pretty_midi.Instrument(program=0, name=name, is_drum=(name == "Drums"))
+        built = []
         for n in notes:
-            st = _quantize(n["start"], grid)
+            st = _quantize(n["start"], grid, analysis.get("tempo_bpm"))
             dur = n["duration"]
-            note = pretty_midi.Note(velocity=80, pitch=int(n["pitch"]),
-                                    start=st, end=st + dur)
+            built.append(pretty_midi.Note(velocity=80, pitch=int(n["pitch"]),
+                                          start=st, end=st + dur))
+        if monophonic and built:
+            # A single voice cannot sound two pitches at once. Fast syllabic runs
+            # (na-na-na, di-da-di-da) are shorter than one quantise cell, so
+            # consecutive notes collapsed into the same onset and were written out as
+            # simultaneous notes ~1 semitone apart - indistinguishable from tracker
+            # noise. Keep the longest note per onset; clip each note so it ends before
+            # the next begins.
+            built.sort(key=lambda x: (x.start, -(x.end - x.start)))
+            dedup: list = []
+            last_start = None
+            for x in built:
+                if last_start is not None and abs(x.start - last_start) < 1e-6:
+                    continue
+                last_start = x.start
+                dedup.append(x)
+            for a, b in zip(dedup, dedup[1:]):
+                if a.end > b.start:
+                    a.end = max(b.start, a.start + 0.01)
+            built = dedup
+        for note in built:
             if channel is not None and channel != 10:
                 note._channel = channel
             track.notes.append(note)
@@ -431,7 +460,7 @@ def stage5_export(track_data: dict, out_root: Path, grid: str,
     add_track("Bass", track_data.get("bass", []))
     add_track("Other", track_data.get("other", []))
     add_track("Drums", track_data.get("drums", []), channel=10)
-    add_track("Lead Vocal", track_data.get("lead_vocal", []))
+    add_track("Lead Vocal", track_data.get("lead_vocal", []), monophonic=True)
     add_track("Vocal Harmonies", track_data.get("vocal_harmonies", []))
 
     mid_path = out_root / "full_score.mid"
@@ -480,12 +509,16 @@ def stage5_export(track_data: dict, out_root: Path, grid: str,
     return summary
 
 
-def _quantize(t: float, grid: str) -> float:
+def _quantize(t: float, grid: str, tempo_bpm: float | None = None) -> float:
     if grid == "none":
         return t
     step = {"16th": 0.25, "32nd": 0.125}[grid]
-    # snap to a quarter-note grid at tempo (approximated: 0.5s per beat at 120bpm)
-    beat = 60.0 / 120.0
+    # Grid derived from the DETECTED tempo. This used to hardcode 120 BPM, so a track
+    # at e.g. 107.67 BPM snapped every onset to a lattice ~10% too short. The error
+    # accumulates until distinct notes land in one cell, which reads as simultaneous
+    # notes a semitone apart - i.e. musical content looks like tracker noise.
+    bpm = tempo_bpm if tempo_bpm and tempo_bpm > 0 else 120.0
+    beat = 60.0 / bpm
     cell = beat * step
     return round(round(t / cell) * cell, 3)
 
